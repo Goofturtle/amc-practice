@@ -50,13 +50,15 @@ async function solution(p){sols[p.id]||=fetchSol(p).catch(()=>({html:null}));con
 // With APP_PASSWORD set (the hosted copy), every page and API call needs the login cookie. Locally it stays open.
 const PASS=process.env.APP_PASSWORD||'',TOKEN=PASS&&crypto.createHmac('sha256',PASS).update('amc10-practice').digest('hex'),
 authed=req=>!PASS||(req.headers.cookie||'').split(/;\s*/).includes('amc='+TOKEN),
+sha=s=>crypto.createHash('sha256').update(s).digest(),
 LOGIN=e=>`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AMC 10 Practice</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#f4f6f9;color:#141821;font:16px/1.5 system-ui,sans-serif}form{display:grid;gap:12px;width:min(320px,90vw)}h1{margin:0;font-size:22px}input,button{font:inherit;padding:12px;border-radius:10px;border:1px solid #dde2ea}button{border:0;background:#2b55c9;color:#fff;font-weight:600;cursor:pointer}p{margin:0;color:#c2372f}@media (prefers-color-scheme:dark){body{background:#0e1117;color:#e7eaf0}input{background:#161a22;color:#e7eaf0;border-color:#2a303b}button{background:#7f9dff;color:#0e1117}p{color:#ff7c72}}</style><form method="post" action="/login"><h1>AMC 10 Practice</h1><label for="p">Password</label><input id="p" name="p" type="password" autocomplete="current-password" required autofocus>${e?'<p>That password is not right.</p>':''}<button>Open</button></form></html>`;
+if(!PASS&&process.env.RENDER){console.error('APP_PASSWORD is not set; refusing to start a public copy without it.');process.exit(1)}
 const recent=[];
 http.createServer(async(req,res)=>{
   const send=(c,type,body)=>{res.writeHead(c,{'content-type':type,'cache-control':'no-store'});res.end(body)},json=(o,c=200)=>send(c,'application/json',JSON.stringify(o));
   try{const u=new URL(req.url,'http://localhost');
     if(u.pathname=='/login'&&req.method=='POST'){let b='';for await(const c of req){b+=c;if(b.length>1e4)break}const p=new URLSearchParams(b).get('p')||'';
-      if(PASS&&p.length==PASS.length&&crypto.timingSafeEqual(Buffer.from(p),Buffer.from(PASS))){res.writeHead(303,{'set-cookie':`amc=${TOKEN}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${req.headers['x-forwarded-proto']=='https'?'; Secure':''}`,location:'/'});return res.end()}
+      if(PASS&&crypto.timingSafeEqual(sha(p),sha(PASS))){res.writeHead(303,{'set-cookie':`amc=${TOKEN}; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000${req.headers['x-forwarded-proto']=='https'?'; Secure':''}`,location:'/'});return res.end()}
       return send(401,'text/html; charset=utf-8',LOGIN(1))}
     if(!authed(req))return u.pathname.startsWith('/api/')?json({error:'locked'},401):send(200,'text/html; charset=utf-8',LOGIN(0));
     if(u.pathname=='/'||u.pathname=='/index.html')return send(200,'text/html; charset=utf-8',fs.readFileSync(path.join(DIR,'index.html')));
