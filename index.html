@@ -97,6 +97,8 @@ select{max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radi
 .err{color:var(--bad)}
 .runbar{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .timer{font:600 15px/1.4 var(--mono)}
+.rt{display:flex;align-items:center;gap:10px}
+#r-paused{justify-items:start}
 .prog{height:4px;border-radius:4px;background:var(--line);overflow:hidden}
 .prog span{display:block;height:100%;width:0;background:var(--acc)}
 .pal{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:6px}
@@ -182,15 +184,16 @@ select{max-width:100%;padding:10px 12px;border:1px solid var(--line);border-radi
 </section>
 
 <section class="view" id="v-run" hidden>
-<div class="runbar"><span class="meta" id="r-meta"></span><span class="timer" id="r-time"></span></div>
+<div class="runbar"><span class="meta" id="r-meta"></span><span class="rt"><span class="timer" id="r-time"></span><button class="btn ghost sm" id="r-pause" type="button">Pause</button></span></div>
 <div class="prog"><span id="r-bar"></span></div>
-<article class="card">
+<article class="card" id="r-paused" hidden><p class="mh">Test paused</p><p id="r-pleft"></p><p class="sub">The clock is stopped and the question is hidden until you come back. Your answers are saved on this device, even if you close the page.</p><button class="btn" id="r-resume" type="button">Resume test</button></article>
+<article class="card" id="r-card">
 <div class="q" id="r-q"></div>
 <div class="choices" id="r-ch" role="group" aria-label="Answer choices"></div>
 <div class="act"><button class="btn ghost" id="r-prev" type="button">Previous</button><button class="btn ghost" id="r-next" type="button">Next</button><button class="btn" id="r-sub" type="button">Submit test</button></div>
 </article>
 <div class="pal" id="r-pal" aria-label="Jump to a question"></div>
-<p class="foot">A–E to answer, arrow keys to move. Click a chosen answer again to leave it blank. The test submits itself when time runs out.</p>
+<p class="foot">A–E to answer, arrow keys to move. Click a chosen answer again to leave it blank. Pause whenever you need to; the test submits itself when time runs out.</p>
 </section>
 
 <section class="view" id="v-results" hidden>
@@ -417,6 +420,7 @@ if(typeof document!='undefined'){
 const NAMES={alg:'Algebra',geo:'Geometry',nt:'Number theory',cmb:'Combinatorics'},L='ABCDE',$=id=>document.getElementById(id),blank=()=>({n:0,ok:0,st:0,best:0,by:{}}),VIEWS=['home','play','test','custom','run','results','ref'];
 let S={sel:Object.keys(NAMES),csel:Object.keys(NAMES),clen:10,prac:blank(),drill:{},hist:[]},play={real:1},cur=null,pick=-1,done=false,busy=false,t0=0,tick,last,solP,Tst=null;
 try{const s=JSON.parse(localStorage.getItem('amc10-practice-v3'));if(s&&s.prac&&s.sel)S=Object.assign(S,s)}catch(e){}
+try{const s=JSON.parse(localStorage.getItem('amc10-test'));if(s&&s.qs&&!s.done)Tst=s}catch(e){}
 const save=()=>{try{localStorage.setItem('amc10-practice-v3',JSON.stringify(S))}catch(e){}},
 mmss=s=>Math.floor(s/60)+':'+String(s%60).padStart(2,'0'),
 fix=el=>el.querySelectorAll('img').forEach(i=>i.addEventListener('error',()=>{if(!i.dataset.f){i.dataset.f=1;i.src='https://web.archive.org/web/2023im_/'+i.src}})),
@@ -431,10 +435,10 @@ else if(h.startsWith('drill-')){const i=+h.slice(6);if(REF[i]){play={key:i,r:REF
 else if(h=='run'&&!(Tst&&!Tst.done)||h=='results'&&!(Tst&&Tst.done)){history.replaceState(null,'','#home');h='home'}
 if(!VIEWS.includes(h))h='home';
 VIEWS.forEach(v=>{$('v-'+v).hidden=v!=h});
-({home,play:startPlay,test:testSetup,custom:customSetup,ref:refView})[h]?.();window.scrollTo(0,0)}
+({home,play:startPlay,test:testSetup,custom:customSetup,ref:refView,run:()=>{drawQ();drawPause()}})[h]?.();window.scrollTo(0,0)}
 function home(){const p=S.prac,l=S.hist[0];
 $('stats').innerHTML=`<div><b>${p.n?Math.round(100*p.ok/p.n)+'%':'–'}</b><span>practice accuracy, ${p.ok} of ${p.n}</span></div><div><b>${p.best}</b><span>best practice streak</span></div><div><b>${l?fmt(l.score)+' / '+l.max:'–'}</b><span>${l?'last test, '+l.name:'no tests taken yet'}</span></div>`;
-$('resume').hidden=!(Tst&&!Tst.done);$('ref-tag').textContent=`${REF.filter(r=>r[0]=='f').length} formulas · ${REF.filter(r=>r[0]=='t').length} terms`;
+$('resume').hidden=!(Tst&&!Tst.done);if(Tst&&!Tst.done)$('resume').textContent=Tst.seg?'You have a test in progress. Resume it':`Your ${Tst.name} is paused with ${mmss(left())} left. Resume it`;$('ref-tag').textContent=`${REF.filter(r=>r[0]=='f').length} formulas · ${REF.filter(r=>r[0]=='t').length} terms`;
 $('hist').innerHTML=S.hist.length?'<h2 class="label">Recent tests</h2>'+S.hist.slice(0,6).map(h=>`<p class="hrow"><span>${h.name}</span><span>${fmt(h.score)} / ${h.max}</span><span>${h.date}</span></p>`).join(''):''}
 function scoreLine(){if(play.real){const p=S.prac;$('score').textContent=`${p.ok} of ${p.n} correct${p.n?' ('+Math.round(100*p.ok/p.n)+'%)':''} · streak ${p.st}`}else{const d=S.drill[play.key]||[0,0];$('score').textContent=`${d[0]} of ${d[1]} correct in this drill`}}
 function startPlay(){$('p-chips').hidden=!play.real;$('p-fx').hidden=!!play.real;
@@ -465,16 +469,20 @@ w.className='why src';w.innerHTML='<p class="ld">Loading the solution…</p>';co
 function choose(i){if(done||!cur)return;pick=i;document.querySelectorAll('#choices .ch').forEach((b,j)=>{b.classList.toggle('sel',j==i);b.setAttribute('aria-pressed',j==i)});$('go').disabled=false}
 async function testSetup(){$('t-err').hidden=true;const s=$('t-sel');if(s.options.length>1)return;try{const l=await fetch('/api/tests').then(r=>r.json());s.innerHTML='<option value="">Random past test</option>'+l.map(t=>`<option value="${t.id}">${t.name}</option>`).join('')}catch(e){}}
 function customSetup(){$('c-chips').innerHTML=chips(S.csel);$('c-len').querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.n==S.clen));$('c-info').textContent=`${S.clen} questions · ${S.clen*3} minutes · scored like the AMC: 6 points right, 1.5 blank, 0 wrong.`}
-function begin(t){if(Tst)clearInterval(Tst.tm);Tst=Object.assign(t,{ans:t.qs.map(()=>-1),i:0,lim:t.qs.length*180,start:Date.now(),done:false,sure:false});Tst.tm=setInterval(tickT,1000);drawQ();location.hash='run'}
-const left=()=>Math.max(0,Tst.lim-Math.floor((Date.now()-Tst.start)/1000));
-function tickT(){if(!Tst||Tst.done)return;const s=left();$('r-time').textContent=mmss(s)+' left';if(s<=0)submit()}
+function begin(t){if(Tst)clearInterval(Tst.tm);Tst=Object.assign(t,{ans:t.qs.map(()=>-1),i:0,lim:t.qs.length*180,el:0,seg:null,done:false,sure:false});resume();location.hash='run'}
+const spent=()=>Tst.el+(Tst.seg?(Date.now()-Tst.seg)/1000:0),left=()=>Math.max(0,Tst.lim-Math.floor(spent())),
+saveT=()=>{try{localStorage.setItem('amc10-test',JSON.stringify(Object.assign({},Tst,{tm:0,el:spent(),seg:null})))}catch(e){}};
+function tickT(){if(!Tst||Tst.done||!Tst.seg)return;const s=left();$('r-time').textContent=mmss(s)+' left';if(s<=0)submit()}
+function pause(){if(!Tst||Tst.done||!Tst.seg)return;Tst.el=spent();Tst.seg=null;clearInterval(Tst.tm);saveT();drawPause()}
+function resume(){if(!Tst||Tst.done||Tst.seg)return;Tst.seg=Date.now();clearInterval(Tst.tm);Tst.tm=setInterval(tickT,1000);drawQ();drawPause()}
+function drawPause(){const p=!Tst.seg;$('r-card').hidden=$('r-pal').hidden=p;$('r-paused').hidden=!p;$('r-pause').textContent=p?'Resume':'Pause';$('r-time').textContent=mmss(left())+' left';$('r-pleft').textContent=`${Tst.name} · ${mmss(left())} left · ${Tst.ans.filter(a=>a>=0).length} of ${Tst.qs.length} answered`}
 function drawQ(){const t=Tst,q=t.qs[t.i];$('r-meta').textContent=`${t.name} · Question ${t.i+1} of ${t.qs.length}`;$('r-time').textContent=mmss(left())+' left';
 $('r-q').className='q'+(q.real?' src':'');$('r-q').innerHTML=q.q;fix($('r-q'));$('r-ch').className='choices'+(q.real?' bub':'');$('r-ch').innerHTML=choicesHTML(q,t.ans[t.i]);
 $('r-prev').disabled=t.i==0;$('r-next').disabled=t.i==t.qs.length-1;mark()}
 function mark(){const t=Tst;document.querySelectorAll('#r-ch .ch').forEach((b,i)=>{b.classList.toggle('sel',t.ans[t.i]==i);b.setAttribute('aria-pressed',t.ans[t.i]==i)});
 $('r-bar').style.width=100*t.ans.filter(a=>a>=0).length/t.qs.length+'%';
-$('r-pal').innerHTML=t.qs.map((_,i)=>`<button type="button" class="pq${t.ans[i]>=0?' on':''}${i==t.i?' cur':''}" data-i="${i}" aria-label="Question ${i+1}${t.ans[i]>=0?', answered':''}">${i+1}</button>`).join('');t.sure=false;$('r-sub').textContent='Submit test'}
-function submit(){const t=Tst;if(!t||t.done)return;t.done=true;clearInterval(t.tm);t.used=Math.min(t.lim,Math.floor((Date.now()-t.start)/1000));let c=0,b=0,w=0;t.qs.forEach((q,i)=>t.ans[i]<0?b++:t.ans[i]==q.a?c++:w++);
+$('r-pal').innerHTML=t.qs.map((_,i)=>`<button type="button" class="pq${t.ans[i]>=0?' on':''}${i==t.i?' cur':''}" data-i="${i}" aria-label="Question ${i+1}${t.ans[i]>=0?', answered':''}">${i+1}</button>`).join('');t.sure=false;$('r-sub').textContent='Submit test';saveT()}
+function submit(){const t=Tst;if(!t||t.done)return;t.used=Math.min(t.lim,Math.floor(spent()));t.done=true;t.seg=null;clearInterval(t.tm);try{localStorage.removeItem('amc10-test')}catch(e){}let c=0,b=0,w=0;t.qs.forEach((q,i)=>t.ans[i]<0?b++:t.ans[i]==q.a?c++:w++);
 Object.assign(t,{c,b,w,score:6*c+1.5*b,max:6*t.qs.length});S.hist.unshift({name:t.name,score:t.score,max:t.max,date:new Date().toLocaleDateString()});S.hist=S.hist.slice(0,20);save();results();location.hash='results'}
 function results(){const t=Tst;$('s-name').textContent=t.name;$('s-score').textContent=`${fmt(t.score)} / ${t.max}`;$('s-sub').textContent=`${t.c} right · ${t.b} blank · ${t.w} wrong · ${mmss(t.used)} used`;$('s-again').setAttribute('href',t.real?'#test':'#custom');
 $('s-list').innerHTML=t.qs.map((q,i)=>{const a=t.ans[i],k=a<0?'blank':a==q.a?'ok':'bad';return`<details class="rv ${k}" data-i="${i}"><summary><span class="mk">${k=='ok'?'✓':k=='bad'?'✗':'–'}</span><span>Question ${i+1} · ${NAMES[q.t]||'Logic'}</span><span class="rva">${a<0?'blank':'you ('+L[a]+')'} · answer (${L[q.a]})</span></summary><div class="rvb"></div></details>`}).join('')}
@@ -501,8 +509,11 @@ $('r-next').onclick=()=>{if(Tst.i<Tst.qs.length-1){Tst.i++;drawQ()}};
 $('r-sub').onclick=()=>{const b=Tst.ans.filter(a=>a<0).length;if(b&&!Tst.sure){Tst.sure=true;$('r-sub').textContent=`Submit with ${b} blank?`;return}submit()};
 document.addEventListener('keydown',e=>{if(e.ctrlKey||e.metaKey||e.altKey||/^(SELECT|INPUT|TEXTAREA)$/.test(e.target.tagName))return;const k=e.key.toUpperCase(),i=k.length==1?Math.max('ABCDE'.indexOf(k),'12345'.indexOf(k)):-1;
 if(!$('v-play').hidden){if(e.key=='Enter'){if(e.target.closest('a,.chip,#reset'))return;e.preventDefault();if(!$('go').disabled)$('go').click()}else if(i>=0)choose(i)}
-else if(!$('v-run').hidden&&Tst&&!Tst.done){if(i>=0){Tst.ans[Tst.i]=i;mark()}else if(e.key=='ArrowRight')$('r-next').click();else if(e.key=='ArrowLeft')$('r-prev').click()}});
-window.addEventListener('beforeunload',e=>{if(Tst&&!Tst.done)e.preventDefault()});
+else if(!$('v-run').hidden&&Tst&&!Tst.done&&Tst.seg){if(i>=0){Tst.ans[Tst.i]=i;mark()}else if(e.key=='ArrowRight')$('r-next').click();else if(e.key=='ArrowLeft')$('r-prev').click()}});
+$('r-pause').onclick=()=>Tst.seg?pause():resume();
+$('r-resume').onclick=resume;
+const keep=()=>{if(Tst&&!Tst.done)saveT()};
+window.addEventListener('pagehide',keep);document.addEventListener('visibilitychange',()=>{if(document.hidden)keep()});
 window.addEventListener('hashchange',route);route()}
 </script>
 </body>
