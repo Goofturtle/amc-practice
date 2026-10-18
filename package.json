@@ -1,0 +1,11 @@
+{
+  "name": "amc-practice",
+  "private": true,
+  "description": "AMC 10 practice: real past problems, timed practice tests, custom tests and formula drills.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
