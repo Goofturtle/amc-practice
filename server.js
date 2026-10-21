@@ -12,7 +12,7 @@ for(const s of 'AB')add('2021F'+s,`2021 Fall AMC 10${s}`,`2021_Fall_AMC_10${s}_P
 for(const s of 'AB')add('2022'+s,`2022 AMC 10${s}`,`2022_AMC_10${s}_Problems`,'2023');
 for(const s of 'AB')add('2023'+s,`2023 AMC 10${s}`,`2023_AMC_10${s}_Problems`,'2024');
 for(const s of 'AB')add('2024'+s,`2024 AMC 10${s}`,`2024_AMC_10${s}_Problems`,'2025');
-const POOL=[];TESTS.forEach((t,i)=>CODES[i].split(' ').forEach((c,j)=>POOL.push({id:`${t.id}-${j+1}`,test:t,n:j+1,topic:TOPIC[c]})));
+const POOL=[];TESTS.forEach((t,i)=>CODES[i].split(' ').forEach((c,j)=>POOL.push({id:`${t.id}-${j+1}`,test:t,n:j+1,topic:TOPIC[c],sub:c})));
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // AoPS blocks automated requests, so pages come from the Internet Archive's copies instead.
@@ -25,6 +25,8 @@ const SOLRE=/<p>\s*(?:<br\s*\/?>\s*)?<a[^>]*>\s*Solutions?\s*<\/a>\s*<\/p>/gi;
 // Archived pages sometimes kept a figure that failed to render; its Asymptote source then shows as plain text.
 const broken=h=>/\[asy\]|Error making remote request/i.test(h.replace(/<[^>]+>/g,''));
 const serve=(h,url)=>h.replace(SOLRE,'')+(broken(h)?`<p><a href="${url}" target="_blank" rel="noopener">This problem's figure is missing from the archive. Open it on AoPS</a></p>`:'');
+const purl=p=>`${AO}/wiki/index.php/${p.test.page}/Problem_${p.n}`,
+pj=(p,d)=>({id:p.id,name:p.test.name,n:p.n,topic:p.topic,sub:p.sub,html:serve(d.probs[p.n],purl(p)),ans:d.ans[p.n-1],url:purl(p)});
 const clean=h=>h.replace(/<script[\s\S]*?<\/script>/gi,'').replace(/<style[\s\S]*?<\/style>/gi,'').replace(/\son\w+="[^"]*"/gi,'').replace(/\ssrcset="[^"]*"/gi,'')
   .replace(SOLRE,'').replace(/(src|href)="\/\//g,'$1="https://').replace(/(src|href)="\/(?!\/)/g,`$1="${AO}/`).replace(/<a /g,'<a target="_blank" rel="noopener" ');
 const section=(h,re)=>{const p=h.split(re);if(p.length<3)return null;let s=p[2];const j=s.indexOf('<h2');if(j>=0)s=s.slice(0,j);return clean(s.replace(/^[\s\S]*?<\/h2>/,''))};
@@ -62,17 +64,19 @@ http.createServer(async(req,res)=>{
       return send(401,'text/html; charset=utf-8',LOGIN(1))}
     if(!authed(req))return u.pathname.startsWith('/api/')?json({error:'locked'},401):send(200,'text/html; charset=utf-8',LOGIN(0));
     if(u.pathname=='/'||u.pathname=='/index.html')return send(200,'text/html; charset=utf-8',fs.readFileSync(path.join(DIR,'index.html')));
+    if(/^\/(gen|app)\.js$/.test(u.pathname))return send(200,'text/javascript; charset=utf-8',fs.readFileSync(path.join(DIR,u.pathname.slice(1))));
     if(u.pathname=='/api/real'){
-      const want=(u.searchParams.get('t')||'alg,geo,nt,cmb').split(','),all=POOL.filter(p=>want.includes(p.topic));
-      let c=all.filter(p=>!recent.includes(p.id));if(!c.length)c=all;if(!c.length)return json({error:'no problems for those topics'},400);
+      const want=(u.searchParams.get('t')||'alg,geo,nt,cmb').split(','),ex=new Set((u.searchParams.get('x')||'').split(',')),all=POOL.filter(p=>want.includes(p.topic));
+      let c=all.filter(p=>!ex.has(p.id)&&!recent.includes(p.id));if(!c.length)c=all.filter(p=>!ex.has(p.id));if(!c.length)c=all.filter(p=>!recent.includes(p.id));if(!c.length)c=all;if(!c.length)return json({error:'no problems for those topics'},400);
       for(let k=0;k<8;k++){const p=c[Math.floor(Math.random()*c.length)];
         try{const d=await loadTest(p.test);if(broken(d.probs[p.n]))continue;recent.push(p.id);if(recent.length>80)recent.shift();solution(p);
-          return json({id:p.id,name:p.test.name,n:p.n,topic:p.topic,html:serve(d.probs[p.n],''),ans:d.ans[p.n-1],url:`${AO}/wiki/index.php/${p.test.page}/Problem_${p.n}`})}catch(e){}}
+          return json(pj(p,d))}catch(e){}}
       return json({error:'archive unavailable'},502)}
     if(u.pathname=='/api/tests')return json(TESTS.map(t=>({id:t.id,name:t.name})));
     if(u.pathname=='/api/test'){
       const t=TESTS.find(t=>t.id==u.searchParams.get('id'))||TESTS[Math.floor(Math.random()*TESTS.length)],d=await loadTest(t);
-      return json({id:t.id,name:t.name,qs:POOL.filter(p=>p.test==t).map(p=>(solution(p),{id:p.id,n:p.n,topic:p.topic,html:serve(d.probs[p.n],`${AO}/wiki/index.php/${t.page}/Problem_${p.n}`),ans:d.ans[p.n-1],url:`${AO}/wiki/index.php/${t.page}/Problem_${p.n}`}))})}
+      return json({id:t.id,name:t.name,qs:POOL.filter(p=>p.test==t).map(p=>(solution(p),pj(p,d)))})}
+    if(u.pathname=='/api/problem'){const p=POOL.find(p=>p.id==u.searchParams.get('id'));return p?json(pj(p,await loadTest(p.test))):json({error:'unknown id'},404)}
     if(u.pathname=='/api/solution'){const p=POOL.find(p=>p.id==u.searchParams.get('id'));return p?json(await solution(p)):json({error:'unknown id'},404)}
     send(404,'text/plain','Not found')
   }catch(e){json({error:String(e.message||e)},500)}
